@@ -89,3 +89,143 @@ class OnlineTripletLoss(nn.Module):
         losses = F.relu(ap_distances - an_distances + self.margin)
 
         return losses.mean(), len(triplets)
+
+
+class OnlineTripletLossV2(nn.Module):
+    """
+    Online Triplets loss
+    Takes a batch of embeddings and corresponding labels.
+    Triplets are generated using triplet_selector object that take embeddings and targets and return indices of
+    triplets
+    """
+
+    def __init__(self, margin, triplet_selector):
+        super(OnlineTripletLossV2, self).__init__()
+        self.margin = margin
+        self.triplet_selector = triplet_selector
+
+    def forward(self, embeddings, target):
+
+        triplets = self.triplet_selector.get_triplets(embeddings, target)
+
+        if embeddings.is_cuda:
+            triplets = triplets.cuda()
+
+        ap_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 1]]).pow(2).sum(1).sqrt()
+        an_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 2]]).pow(2).sum(1).sqrt()
+        losses = F.relu(ap_distances - an_distances + self.margin)
+        return losses.mean(), len(triplets)
+
+class OnlineTripletLossV3(nn.Module):
+    """
+    Online Triplets loss
+    Takes a batch of embeddings and corresponding labels.
+    Triplets are generated using triplet_selector object that take embeddings and targets and return indices of
+    triplets
+    Balntas et al
+    """
+
+    def __init__(self, margin, triplet_selector):
+        super(OnlineTripletLossV3, self).__init__()
+        self.margin = margin
+        self.triplet_selector = triplet_selector
+
+    def forward(self, embeddings, target):
+        A = 0
+        P = 1
+        N = 2
+        triplets = self.triplet_selector.get_triplets(embeddings, target)
+
+        if embeddings.is_cuda:
+            triplets = triplets.cuda()
+	
+        anchor = embeddings[triplets[:, A]]
+        positives = embeddings[triplets[:, P]]
+        negatives = embeddings[triplets[:, N]]
+        ap_distances = torch.diagonal(torch.cdist(anchor, positives))
+        an_distances = torch.diagonal(torch.cdist(anchor, negatives))
+        pn_distances = torch.diagonal(torch.cdist(positives, negatives))
+        an_pn = torch.minimum(an_distances, pn_distances)
+        losses = F.relu(ap_distances - an_pn + self.margin)
+
+        #loss_func = nn.TripletMarginWithDistanceLoss(distance_function=nn.CosineSimilarity(), 
+        #					     swap=True, margin=0.9)
+        #losses = loss_func(embeddings[triplets[:, A]], embeddings[triplets[:, P]], embeddings[triplets[:, N]])
+
+        return losses.mean(), len(triplets)
+
+
+class OnlineTripletLossV4(nn.Module):
+    """
+    Online Triplets loss
+    Takes a batch of embeddings and corresponding labels.
+    Triplets are generated using triplet_selector object that take embeddings and targets and return indices of
+    triplets
+    Zhang et al
+    """
+
+    def __init__(self, margin, triplet_selector):
+        super(OnlineTripletLossV4, self).__init__()
+        self.margin = margin
+        self.triplet_selector = triplet_selector
+
+    def forward(self, embeddings, target):
+        A = 0
+        P = 1
+        N = 2
+        triplets = self.triplet_selector.get_triplets(embeddings, target)
+
+        if embeddings.is_cuda:
+            triplets = triplets.cuda()
+	
+        anchor = embeddings[triplets[:, A]]
+        positives = embeddings[triplets[:, P]]
+        negatives = embeddings[triplets[:, N]]
+        ap_distances = torch.diagonal(torch.cdist(anchor, positives))
+        an_distances = torch.diagonal(torch.cdist(anchor, negatives))
+        pn_distances = torch.diagonal(torch.cdist(positives, negatives))
+        #an_pn = torch.minimum(an_distances, pn_distances)
+        #losses = F.relu(ap_distances - an_pn + self.margin)
+        
+        farther_apart_distances = an_distances + pn_distances
+        losses = F.relu(ap_distances - torch.div(farther_apart_distances, 2) + self.margin) 
+
+        return losses.mean(), len(triplets)
+
+
+class OnlineTripletLossV5(nn.Module):
+    """
+    Online Triplets loss
+    Takes a batch of embeddings and corresponding labels.
+    Triplets are generated using triplet_selector object that take embeddings and targets and return indices of
+    triplets
+    Florian et al
+    """
+
+    def __init__(self, margin, triplet_selector):
+        super(OnlineTripletLossV5, self).__init__()
+        self.margin = margin
+        self.triplet_selector = triplet_selector
+
+    def forward(self, embeddings, target):
+        A = 0
+        P = 1
+        N = 2
+        triplets = self.triplet_selector.get_triplets(embeddings, target)
+
+        if embeddings.is_cuda:
+            triplets = triplets.cuda()
+	
+        anchor = embeddings[triplets[:, A]]
+        positives = embeddings[triplets[:, P]]
+        negatives = embeddings[triplets[:, N]]
+        ap_distances = torch.diagonal(torch.cdist(anchor, positives))
+        an_distances = torch.diagonal(torch.cdist(anchor, negatives)) 
+        losses = F.relu(ap_distances - an_distances + self.margin)
+ 
+        return losses.mean(), len(triplets)
+
+
+
+
+

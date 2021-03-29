@@ -2,11 +2,12 @@ from itertools import combinations
 
 import numpy as np
 import torch
-
-
+  
+  
 def pdist(vectors):
     distance_matrix = -2 * vectors.mm(torch.t(vectors)) + vectors.pow(2).sum(dim=1).view(1, -1) + vectors.pow(2).sum(
         dim=1).view(-1, 1)
+    # print(distance_matrix.size())
     return distance_matrix
 
 
@@ -36,13 +37,11 @@ class AllPositivePairSelector(PairSelector):
     def get_pairs(self, embeddings, labels):
         labels = labels.cpu().data.numpy()
         all_pairs = np.array(list(combinations(range(len(labels)), 2)))
-        all_pairs = torch.LongTensor(all_pairs)
         positive_pairs = all_pairs[(labels[all_pairs[:, 0]] == labels[all_pairs[:, 1]]).nonzero()]
         negative_pairs = all_pairs[(labels[all_pairs[:, 0]] != labels[all_pairs[:, 1]]).nonzero()]
         if self.balance:
             negative_pairs = negative_pairs[torch.randperm(len(negative_pairs))[:len(positive_pairs)]]
-
-        return positive_pairs, negative_pairs
+        return torch.LongTensor(positive_pairs), torch.LongTensor(negative_pairs)
 
 
 class HardNegativePairSelector(PairSelector):
@@ -129,7 +128,6 @@ def semihard_negative(loss_values, margin):
     semihard_negatives = np.where(np.logical_and(loss_values < margin, loss_values > 0))[0]
     return np.random.choice(semihard_negatives) if len(semihard_negatives) > 0 else None
 
-
 class FunctionNegativeTripletSelector(TripletSelector):
     """
     For each positive pair, takes the hardest negative sample (with the greatest triplet loss value) to create a triplet
@@ -147,7 +145,7 @@ class FunctionNegativeTripletSelector(TripletSelector):
     def get_triplets(self, embeddings, labels):
         if self.cpu:
             embeddings = embeddings.cpu()
-        distance_matrix = pdist(embeddings)
+        distance_matrix = torch.cdist(embeddings, embeddings) #pdist(embeddings)
         distance_matrix = distance_matrix.cpu()
 
         labels = labels.cpu().data.numpy()
@@ -161,7 +159,8 @@ class FunctionNegativeTripletSelector(TripletSelector):
             negative_indices = np.where(np.logical_not(label_mask))[0]
             anchor_positives = list(combinations(label_indices, 2))  # All anchor-positive pairs
             anchor_positives = np.array(anchor_positives)
-
+            idx = torch.randperm(len(anchor_positives))
+            anchor_positives = anchor_positives[idx]
             ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
             for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
                 loss_values = ap_distance - distance_matrix[torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)] + self.margin
@@ -173,11 +172,39 @@ class FunctionNegativeTripletSelector(TripletSelector):
 
         if len(triplets) == 0:
             triplets.append([anchor_positive[0], anchor_positive[1], negative_indices[0]])
-
+         
         triplets = np.array(triplets)
-
         return torch.LongTensor(triplets)
 
+class AllPositivePairSelectorV2(PairSelector):
+    """
+    Discards embeddings and generates all possible pairs given labels.
+    If balance is True, negative pairs are a random sample to match the number of positive samples
+    """
+    def __init__(self, balance=True):
+        super(AllPositivePairSelectorV2, self).__init__()
+        self.balance = balance
+
+    def get_pairs(self, embeddings, labels):
+        labels = labels.cpu().data.numpy()
+        combine = np.array(list(combinations(range(len(labels)), 2)))
+        all_pairs = torch.LongTensor( combine[(labels[combine[:,0]] == 0)] )
+        swapped = torch.LongTensor(combine[ (labels[combine[:,1]] == 0)])
+        # print(len(swapped))
+        # print(swapped)
+        f = lambda pairs: map(lambda x: [x[0], x[1]] if labels[x[0]] == 0 else [x[1], x[0]], pairs)
+        _swapped = torch.LongTensor(list(f(swapped)))
+        # print(len(_swapped) + len(all_pairs))
+        # print(_swapped)
+        all_pairs = torch.cat((all_pairs, swapped))
+        # print(len(all_pairs))
+        positive_pairs = all_pairs[(labels[all_pairs[:, 0]] == labels[all_pairs[:, 1]]).nonzero()]
+        negative_pairs = all_pairs[(labels[all_pairs[:, 0]] != labels[all_pairs[:, 1]]).nonzero()]
+
+        if self.balance:
+            negative_pairs = negative_pairs[torch.randperm(len(negative_pairs))[:len(positive_pairs)]]
+        print(len(positive_pairs), len(negative_pairs))
+        return positive_pairs, negative_pairs
 
 def HardestNegativeTripletSelector(margin, cpu=False): return FunctionNegativeTripletSelector(margin=margin,
                                                                                  negative_selection_fn=hardest_negative,
