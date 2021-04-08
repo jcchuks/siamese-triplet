@@ -1,15 +1,16 @@
 import os
 
 import torch
-import numpy as np 
+import numpy as np
 
 from sklearn import svm
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import seaborn as sns
-import umap
+# import umap
+from constants import *
 
-cluster_folder = "./result/clusters/"
+
 #os.makedirs(result_folder, exist_ok=True)
 step = 0
 
@@ -20,14 +21,9 @@ sns.set(style='white', context='poster', rc={'figure.figsize': (14, 10)})
 
 all_data = [[], []]
 
-best_model_path = "./best_model"
-best_model_file_name = "best_model.pt"
-validation_file = "validation.txt"
-result_folder = './result'
-folder = ""
-classes = 10
+
 colormap = plt.cm.Set1 #nipy_spectral, Set1,Paired  
-colorst = [colormap(i) for i in np.linspace(0, 0.9, classes)]       
+colorst = [colormap(i) for i in np.linspace(0, 0.9, shared_params["classes"])]
 
 
 def get_cmap(n, name='tab10'):
@@ -44,11 +40,13 @@ def draw_umap(embeddings, n_neighbors=15,
     _folder = cluster_folder + folder
     
     os.makedirs(_folder, exist_ok=True)
-    ax = fig.add_subplot(111) 
+
     if n_components == 3:
         ax = fig.add_subplot(111, projection='3d')
-        
-    
+    else:
+        ax = fig.add_subplot(111)
+
+
     for idx,u1 in enumerate(embeddings):
         if not u1: continue
         lu1  = len(u1)
@@ -164,8 +162,8 @@ def train_epoch(svm, train_loader, model, loss_fn, optimizer, cuda, log_interval
     model.train()
     losses = []
     total_loss = 0
-    all_data = [[] for _ in range(classes)]
-    anchors = [ None for _ in range(classes)]
+    all_data = [[] for _ in range(shared_params["classes"])]
+    anchors = [ None for _ in range(shared_params["classes"])]
     batch_count = len(train_loader) or 1
     
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -208,8 +206,8 @@ def train_epoch(svm, train_loader, model, loss_fn, optimizer, cuda, log_interval
              
             all_data[label.item()].append(embedding_copy)
            
-        for idx, embedding in enumerate(all_data):
-            anchors[idx] = (torch.stack(embedding).sum(0) / len(embedding))
+        for idx, embeds in enumerate(all_data):
+            anchors[idx] = (torch.stack(embeds).sum(0) / len(embeds))
                 
         for metric in metrics:
             metric(outputs, target, loss_outputs)
@@ -236,7 +234,7 @@ def test_epoch(val_loader, model, loss_fn, cuda, metrics, testName="testVideo"):
    
     global folder
     folder = testName 
-    all_data = [[] for _ in range(classes)]
+    all_data = [[] for _ in range(shared_params["classes"])]
     with torch.no_grad():
         for metric in metrics:
             metric.reset()
